@@ -1,34 +1,38 @@
 from selenium import webdriver
 from selenium.common.exceptions import NoSuchElementException
+from requests.exceptions import ProxyError
 import threading
-import time
-import sys
-
+import requests
 
 READ_FILE = "proxy.txt"
 WRITE_FILE = "checked.txt"
 CHECK_WEBSITE = "https://ome.tv/"
-PROXY_LENGHT = len(open(READ_FILE).readlines())
 THREADS_SUM = 10
+PROTOCOL = "https"
+THREADS_FLAG = False
+THREADS_COUNT = 0
+THREADS_LIST = []
 
 
 def read_file(file):
     with open(file) as file:
         proxy_list = file.readlines()
-        for proxy in proxy_list:
-            yield proxy.rstrip('\n')
+        formatted_proxies = filter(lambda proxy: proxy != '\n', proxy_list)
+        for proxy in formatted_proxies:
+            yield proxy.rstrip()
 
 
 class FileWriter:
-
     def __init__(self, file):
         self.file = open(file, 'w+')
+        self.mutex = threading.Lock()
 
     def __len__(self):
         return len(self.file.readlines())
 
     def write(self, string):
-        self.file.write(string + '\n')
+        with self.mutex:
+            self.file.write(str(string) + '\n')
 
 
 class Browser:
@@ -36,6 +40,7 @@ class Browser:
     def __init__(self, proxy):
         self.browser_option = webdriver.ChromeOptions()
         self.browser_option.add_argument('--proxy-server=%s' % proxy)
+        print("Browsers", proxy)
         # self.browser_option.add_argument('--headless')
         self.browser = webdriver.Chrome(options=self.browser_option)
 
@@ -47,6 +52,8 @@ class Browser:
             element = self.browser.find_element_by_class_name("ban-popup__body")
             if element.is_displayed():
                 return True
+            elif not element.is_displayed():
+                return False
         except NoSuchElementException:
             return False
 
@@ -58,66 +65,63 @@ class Browser:
         except NoSuchElementException:
             return False
 
-    def check_connection(self):
+    def check_connection_error(self):
         try:
             self.browser.find_element_by_class_name("neterror")
-            return False
-        except NoSuchElementException:
             return True
+        except NoSuchElementException:
+            return False
 
     def close(self):
         self.browser.close()
 
 
-class Main:
+class Checker:
 
     def __init__(self):
-        self.proxies = read_file(READ_FILE)
         self.checked_proxy = FileWriter(WRITE_FILE)
 
-    def start_check(self):
-        try:
-            proxy = next(self.proxies)
+    def start_check(self, proxy):
+        proxy_works = check_proxy_works(CHECK_WEBSITE, "https", proxy)
+        if proxy_works is True:
             browser = Browser(proxy)
             browser.open_page(CHECK_WEBSITE)
-            connection = browser.check_connection()
-            dammy = browser.check_access_dummy()
+            connection_error = browser.check_connection_error()
+            dummy_access = browser.check_access_dummy()
             ban = browser.check_ban()
-            if (ban is False) and (dammy is False) and (connection is False):
+            if (connection_error is False) and (dummy_access is False) and (ban is False):
                 self.checked_proxy.write(proxy)
             browser.close()
-            self.threads_count -= 1
-        except StopIteration:
-            pass
-        except ValueError:
-            pass
-
-    def thread(self):
-        self.threads_count = 0
-        while True:
-            if self.threads_count < 10:
-                threading.Thread(target=self.start_check).start()
-                self.threads_count += 1
-            else:
-                time.sleep(1)
 
 
-def checker():
+def thread():
+    file = read_file(READ_FILE)
+    obj = Checker()
+    threads = []
     while True:
-        print(threading.active_count())
-        if threading.active_count() == 2:
-            sys.exit()
-        else:
-            time.sleep(1)
+        try:
+            proxy = next(file)
+            print(proxy, "THREAD")
+            thread = threading.Thread(target=obj.start_check, args=(proxy, ))
+            thread.start()
+            threads.append(thread)
+        except StopIteration:
+            break
+    for thread in threads:
+        thread.join()
 
 
-class ReadyException(Exception):
-    def __init__(self):
-        print("Ready")
+def check_proxy_works(url, protocol, proxy):
+    _proxy = dict()
+    _proxy[protocol] = proxy
+    try:
+        requests.get(url, proxies=_proxy)
+        return True
+    except ProxyError:
+        return False
 
 
 if __name__ == "__main__":
-    start = Main()
-    start.thread()
-    checker()
+    # pass
+    thread()
 
