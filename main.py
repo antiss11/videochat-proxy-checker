@@ -4,14 +4,18 @@ from requests.exceptions import ProxyError
 import threading
 import requests
 
+"""
+Change THREADS_SUM less if you have got a not powerful CPU
+or increase it if you have got a powerful CPU. Enjoy it :)
+
+"""
+
 READ_FILE = "proxy.txt"
 WRITE_FILE = "checked.txt"
 CHECK_WEBSITE = "https://ome.tv/"
 THREADS_SUM = 10
 PROTOCOL = "https"
-THREADS_FLAG = False
-THREADS_COUNT = 0
-THREADS_LIST = []
+THREADS_RUN = 0
 
 
 def read_file(file):
@@ -27,9 +31,6 @@ class FileWriter:
         self.file = open(file, 'w+')
         self.mutex = threading.Lock()
 
-    def __len__(self):
-        return len(self.file.readlines())
-
     def write(self, string):
         with self.mutex:
             self.file.write(str(string) + '\n')
@@ -40,8 +41,7 @@ class Browser:
     def __init__(self, proxy):
         self.browser_option = webdriver.ChromeOptions()
         self.browser_option.add_argument('--proxy-server=%s' % proxy)
-        print("Browsers", proxy)
-        # self.browser_option.add_argument('--headless')
+        self.browser_option.add_argument('--headless')
         self.browser = webdriver.Chrome(options=self.browser_option)
 
     def open_page(self, url):
@@ -62,6 +62,8 @@ class Browser:
             element = self.browser.find_element_by_class_name("access-dummy")
             if element.is_displayed():
                 return True
+            elif not element.is_displayed():
+                return False
         except NoSuchElementException:
             return False
 
@@ -82,6 +84,7 @@ class Checker:
         self.checked_proxy = FileWriter(WRITE_FILE)
 
     def start_check(self, proxy):
+        global THREADS_RUN
         proxy_works = check_proxy_works(CHECK_WEBSITE, "https", proxy)
         if proxy_works is True:
             browser = Browser(proxy)
@@ -92,19 +95,24 @@ class Checker:
             if (connection_error is False) and (dummy_access is False) and (ban is False):
                 self.checked_proxy.write(proxy)
             browser.close()
+        THREADS_RUN -= 1
 
 
-def thread():
+def main():
     file = read_file(READ_FILE)
     obj = Checker()
     threads = []
+    global THREADS_RUN
     while True:
         try:
-            proxy = next(file)
-            print(proxy, "THREAD")
-            thread = threading.Thread(target=obj.start_check, args=(proxy, ))
-            thread.start()
-            threads.append(thread)
+            if THREADS_RUN == THREADS_SUM:
+                pass
+            elif THREADS_RUN != THREADS_SUM:
+                proxy = next(file)
+                thread = threading.Thread(target=obj.start_check, args=(proxy, ))
+                thread.start()
+                THREADS_RUN += 1
+                threads.append(thread)
         except StopIteration:
             break
     for thread in threads:
@@ -122,6 +130,5 @@ def check_proxy_works(url, protocol, proxy):
 
 
 if __name__ == "__main__":
-    # pass
-    thread()
+    main()
 
