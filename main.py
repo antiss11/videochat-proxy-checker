@@ -3,6 +3,10 @@ from selenium.common.exceptions import NoSuchElementException
 from requests.exceptions import ProxyError
 import threading
 import requests
+import gui
+from PyQt5 import QtWidgets
+from PyQt5.Qt import QWidget, QEvent
+import sys
 
 """
 Change THREADS_SUM less if you have got a not powerful CPU
@@ -13,7 +17,7 @@ or increase it if you have got a powerful CPU. Enjoy it :)
 READ_FILE = "proxy.txt"
 WRITE_FILE = "checked.txt"
 CHECK_WEBSITE = "https://ome.tv/"
-THREADS_SUM = 10
+THREADS_SUM = 5
 PROTOCOL = "https"
 THREADS_RUN = 0
 
@@ -41,7 +45,7 @@ class Browser:
     def __init__(self, proxy):
         self.browser_option = webdriver.ChromeOptions()
         self.browser_option.add_argument('--proxy-server=%s' % proxy)
-        self.browser_option.add_argument('--headless')
+        # self.browser_option.add_argument('--headless')
         self.browser = webdriver.Chrome(options=self.browser_option)
 
     def open_page(self, url):
@@ -98,25 +102,58 @@ class Checker:
         THREADS_RUN -= 1
 
 
-def main():
-    file = read_file(READ_FILE)
-    obj = Checker()
-    threads = []
-    global THREADS_RUN
-    while True:
-        try:
-            if THREADS_RUN == THREADS_SUM:
-                pass
-            elif THREADS_RUN != THREADS_SUM:
-                proxy = next(file)
-                thread = threading.Thread(target=obj.start_check, args=(proxy, ))
-                thread.start()
-                THREADS_RUN += 1
-                threads.append(thread)
-        except StopIteration:
-            break
-    for thread in threads:
-        thread.join()
+class Gui(QtWidgets.QMainWindow, gui.Ui_MainWindow, QWidget):
+    def __init__(self):
+        QWidget.__init__(self)
+        self.setupUi(self)
+        self.pushButton_start.installEventFilter(self)
+
+
+    def test(self):
+        print(123)
+        self.textBrowser_chckPrx.append("234")
+
+    def eventFilter(self, obj, event, msg=None):
+        if obj == self.pushButton_start and event.type() == QEvent.MouseButtonPress:
+            Main.main_thread()
+
+        return QWidget.eventFilter(self, obj, event)
+
+
+class Main:
+    def setup_gui(self):
+        app = QtWidgets.QApplication(sys.argv)
+        self.gui = Gui()
+        self.gui.show()
+        app.exec_()
+
+
+    def main(self):
+        file = read_file(READ_FILE)
+        obj = Checker()
+        threads = []
+        global THREADS_RUN
+        while True:
+            try:
+                if THREADS_RUN == THREADS_SUM:
+                    pass
+                elif THREADS_RUN != THREADS_SUM:
+                    proxy = next(file)
+                    self.gui.test()
+                    print(proxy)
+                    thread = threading.Thread(target=obj.start_check, args=(proxy,))
+                    thread.start()
+                    THREADS_RUN += 1
+                    threads.append(thread)
+            except StopIteration:
+                break
+        for thread in threads:
+            thread.join()
+
+    @classmethod
+    def main_thread(cls):
+        thread = threading.Thread(target=Main.main)
+        thread.start()
 
 
 def check_proxy_works(url, protocol, proxy):
@@ -128,7 +165,11 @@ def check_proxy_works(url, protocol, proxy):
     except ProxyError:
         return False
 
+# def setupGUI():
+
+
 
 if __name__ == "__main__":
-    main()
+    gui = Main()
+    gui.setup_gui()
 
