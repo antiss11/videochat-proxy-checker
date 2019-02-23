@@ -45,7 +45,7 @@ class Browser:
     def __init__(self, proxy):
         self.browser_option = webdriver.ChromeOptions()
         self.browser_option.add_argument('--proxy-server=%s' % proxy)
-        # self.browser_option.add_argument('--headless')
+        self.browser_option.add_argument('--headless')
         self.browser = webdriver.Chrome(options=self.browser_option)
 
     def open_page(self, url):
@@ -84,8 +84,10 @@ class Browser:
 
 class Checker:
 
-    def __init__(self):
+    def __init__(self, obj, mutex):
         self.checked_proxy = FileWriter(WRITE_FILE)
+        self.mutex = mutex
+        self.obj = obj
 
     def start_check(self, proxy):
         global THREADS_RUN
@@ -97,7 +99,9 @@ class Checker:
             dummy_access = browser.check_access_dummy()
             ban = browser.check_ban()
             if (connection_error is False) and (dummy_access is False) and (ban is False):
-                self.checked_proxy.write(proxy)
+                with self.mutex:
+                    self.checked_proxy.write(proxy)
+                    Gui.write_prx(self.obj, proxy)
             browser.close()
         THREADS_RUN -= 1
 
@@ -107,30 +111,17 @@ class Gui(QtWidgets.QMainWindow, gui.Ui_MainWindow, QWidget):
         QWidget.__init__(self)
         self.setupUi(self)
         self.pushButton_start.installEventFilter(self)
+        self.lock = threading.Lock()
 
-
-    def test(self):
-        print(123)
-        self.textBrowser_chckPrx.append("234")
-
-    def eventFilter(self, obj, event, msg=None):
+    def eventFilter(self, obj, event):
         if obj == self.pushButton_start and event.type() == QEvent.MouseButtonPress:
-            Main.main_thread()
+            self.main_thread()
 
         return QWidget.eventFilter(self, obj, event)
 
-
-class Main:
-    def setup_gui(self):
-        app = QtWidgets.QApplication(sys.argv)
-        self.gui = Gui()
-        self.gui.show()
-        app.exec_()
-
-
     def main(self):
         file = read_file(READ_FILE)
-        obj = Checker()
+        obj = Checker(self.textBrowser_wrkPrx, self.lock)
         threads = []
         global THREADS_RUN
         while True:
@@ -139,8 +130,8 @@ class Main:
                     pass
                 elif THREADS_RUN != THREADS_SUM:
                     proxy = next(file)
-                    self.gui.test()
-                    print(proxy)
+                    with self.lock:
+                        self.write_prx(self.textBrowser_chckPrx, proxy)
                     thread = threading.Thread(target=obj.start_check, args=(proxy,))
                     thread.start()
                     THREADS_RUN += 1
@@ -150,10 +141,20 @@ class Main:
         for thread in threads:
             thread.join()
 
-    @classmethod
-    def main_thread(cls):
-        thread = threading.Thread(target=Main.main)
+    def main_thread(self):
+        thread = threading.Thread(target=self.main)
         thread.start()
+
+    @staticmethod
+    def write_prx(obj, prx):
+        obj.append(str(prx))
+
+
+def create_gui():
+        app = QtWidgets.QApplication(sys.argv)
+        gui = Gui()
+        gui.show()
+        app.exec_()
 
 
 def check_proxy_works(url, protocol, proxy):
@@ -165,11 +166,8 @@ def check_proxy_works(url, protocol, proxy):
     except ProxyError:
         return False
 
-# def setupGUI():
-
-
 
 if __name__ == "__main__":
-    gui = Main()
-    gui.setup_gui()
+    create_gui()
+
 
