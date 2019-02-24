@@ -9,6 +9,7 @@ from PyQt5.Qt import QWidget, QEvent
 import sys
 import itertools
 import time
+import queue
 
 """
 Change THREADS_SUM less if you have got a not powerful CPU
@@ -23,6 +24,8 @@ THREADS_SUM = 5
 PROTOCOL = "https"
 THREADS_RUN = 0
 STATUS_FLAG = False
+END_FLAG = False
+dataQueue = queue.Queue()
 
 
 def read_file(file):
@@ -41,6 +44,9 @@ class FileWriter:
     def write(self, string):
         with self.mutex:
             self.file.write(str(string) + '\n')
+
+    def close(self):
+        self.file.close()
 
 
 class Browser:
@@ -88,7 +94,6 @@ class Browser:
 class Checker:
 
     def __init__(self, obj, mutex):
-        self.checked_proxy = FileWriter(WRITE_FILE)
         self.mutex = mutex
         self.obj = obj
 
@@ -103,7 +108,7 @@ class Checker:
             ban = browser.check_ban()
             if (connection_error is False) and (dummy_access is False) and (ban is False):
                 with self.mutex:
-                    self.checked_proxy.write(proxy)
+                    dataQueue.put(proxy)
                     Gui.write_prx(self.obj, proxy)
             browser.close()
         THREADS_RUN -= 1
@@ -123,7 +128,9 @@ class Gui(QtWidgets.QMainWindow, gui.Ui_MainWindow, QWidget):
             self.textBrowser_chckPrx.clear()
             self.textBrowser_wrkPrx.clear()
             self.pushButton_start.setEnabled(False)
+            consumer()
             self.main_thread()
+
         if obj == self.pushButton_start and event.type() == QEvent.MouseButtonPress and \
            obj.isEnabled() is False:
             pass
@@ -195,14 +202,32 @@ def status_anim(obj, msg):
             time.sleep(0.3)
 
 
+@thread_dec
+def consumer():
+    checked_proxies = FileWriter(WRITE_FILE)
+    while True:
+        time.sleep(0.1)
+        if END_FLAG is False:
+            try:
+                proxy = dataQueue.get(block=False)
+            except queue.Empty:
+                pass
+            else:
+                checked_proxies.write(proxy)
+        elif END_FLAG is True:
+            checked_proxies.close()
+
+
 def create_gui():
     app = QtWidgets.QApplication(sys.argv)
     gui = Gui()
     gui.show()
     app.exec_()
 
+
 if __name__ == "__main__":
     create_gui()
+
 
 
 
